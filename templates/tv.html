@@ -81,6 +81,14 @@
   }
 
   .url .accent { color: #e8c547; }
+
+  .audio {
+    font-family: 'DM Mono', monospace;
+    font-size: 18px;
+    color: #666680;
+    letter-spacing: 0.04em;
+    margin-top: 16px;
+  }
 </style>
 </head>
 <body>
@@ -92,6 +100,7 @@
 <div class="url">
   <span class="accent">http://</span><span id="ip">...</span><span class="accent">:7777</span>
 </div>
+<div class="audio" id="audio">...</div>
 
 <script>
   function fetchIp() {
@@ -102,6 +111,9 @@
           document.getElementById('ip').textContent = data.ip;
         } else {
           setTimeout(fetchIp, 2000);
+        }
+        if (data.audio) {
+          document.getElementById('audio').textContent = '♪ ' + data.audio;
         }
       })
       .catch(() => setTimeout(fetchIp, 2000));
