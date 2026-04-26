@@ -59,17 +59,16 @@ def cdp_navigate(url):
         ws = websocket.create_connection(tab["webSocketDebuggerUrl"], timeout=5)
         ws.send(json.dumps({"id": 1, "method": "Page.navigate", "params": {"url": url}}))
         ws.recv()
-        # For cineby title pages, wait then click the play button
-        if "cineby" in url:
-            time.sleep(4)
-            ws.send(json.dumps({
-                "id": 2,
-                "method": "Runtime.evaluate",
-                "params": {
-                    "expression": "Array.from(document.querySelectorAll('button')).find(e => e.textContent.trim() === 'Play')?.click()"
-                }
-            }))
-            ws.recv()
+        # After page loads, try to click a Play button if present
+        time.sleep(4)
+        ws.send(json.dumps({
+            "id": 2,
+            "method": "Runtime.evaluate",
+            "params": {
+                "expression": "Array.from(document.querySelectorAll('button')).find(e => e.textContent.trim() === 'Play')?.click()"
+            }
+        }))
+        ws.recv()
         ws.close()
         return True
     except Exception as e:
