@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stream CBTV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0c;
+    color: #f0f0f0;
+    font-family: 'Syne', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.6;
+  }
+
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #e8c547;
+    box-shadow: 0 0 24px #e8c547;
+    animation: pulse 2.4s ease-in-out infinite;
+    margin-bottom: 36px;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 24px #e8c547; }
+    50%       { opacity: 0.35; box-shadow: 0 0 8px #e8c547; }
+  }
+
+  .logo {
+    font-size: 80px;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #e8c547;
+    margin-bottom: 56px;
+  }
+
+  .divider {
+    width: 180px;
+    height: 1px;
+    background: #2a2a35;
+    margin-bottom: 56px;
+  }
+
+  .instruction {
+    font-size: 26px;
+    font-weight: 400;
+    color: #666680;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+
+  .url {
+    font-family: 'DM Mono', monospace;
+    font-size: 48px;
+    font-weight: 400;
+    color: #f0f0f0;
+    letter-spacing: 0.05em;
+  }
+
+  .url .accent { color: #e8c547; }
+</style>
+</head>
+<body>
+
+<div class="dot"></div>
+<div class="logo">Stream CBTV</div>
+<div class="divider"></div>
+<div class="instruction">Open on your phone to stream</div>
+<div class="url">
+  <span class="accent">http://</span><span id="ip">...</span><span class="accent">:7777</span>
+</div>
+
+<script>
+  function fetchIp() {
+    fetch('/api/ip')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ip && data.ip.includes('.')) {
+          document.getElementById('ip').textContent = data.ip;
+        } else {
+          setTimeout(fetchIp, 2000);
+        }
+      })
+      .catch(() => setTimeout(fetchIp, 2000));
+  }
+  fetchIp();
+</script>
+</body>
+</html>

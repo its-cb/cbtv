@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Stream CBTV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0a0c;
+    --surface:   #111116;
+    --card:      #18181f;
+    --border:    #2a2a35;
+    --accent:    #e8c547;
+    --accent2:   #c9a227;
+    --red:       #e85447;
+    --text:      #f0f0f0;
+    --muted:     #666680;
+    --success:   #47e8a0;
+    --r:         14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  button, .ctrl-btn, .key-btn, .power-btn, .quick-link, .go-btn {
+    touch-action: manipulation;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 0 40px;
+    overflow-x: hidden;
+  }
+
+  /* ── Grain overlay ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.6;
+  }
+
+  /* ── Header ── */
+  header {
+    width: 100%;
+    max-width: 480px;
+    padding: 28px 24px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--accent); }
+    50%       { opacity: 0.4; box-shadow: 0 0 4px var(--accent); }
+  }
+
+  .logo-text {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .status-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* ── Main container ── */
+  main {
+    width: 100%;
+    max-width: 480px;
+    padding: 24px 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ── URL Bar ── */
+  .url-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .url-input-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .url-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 13px 14px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+    min-width: 0;
+  }
+
+  .url-input::placeholder { color: var(--muted); }
+  .url-input:focus { border-color: var(--accent); }
+
+  .go-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    padding: 0 20px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .go-btn:active { transform: scale(0.95); background: var(--accent2); }
+
+  /* Quick links */
+  .quick-links {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .quick-link {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+
+  .quick-link:active, .quick-link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Playback controls ── */
+  .controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .ctrl-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 18px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+  }
+
+  .ctrl-btn:active { transform: scale(0.95); border-color: var(--accent); background: #1e1e28; }
+
+  .ctrl-btn svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .ctrl-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+
+  /* ── Keyboard shortcuts ── */
+  .keys-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .key-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .key-btn:active { transform: scale(0.97); border-color: var(--accent); }
+
+  .key-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    min-width: 36px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .key-desc {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Navigate ── */
+  .nav-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .nav-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 15px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    touch-action: manipulation;
+  }
+
+  .nav-btn:active { transform: scale(0.95); border-color: var(--accent); background: #1e1e28; }
+
+  .nav-btn svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .nav-btn .ctrl-label { color: var(--muted); }
+
+  .nav-btn.reset-btn { border-color: #333340; }
+  .nav-btn.reset-btn .ctrl-label { color: var(--accent); }
+
+  /* ── Power section ── */
+  .power-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .power-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .power-btn:active { transform: scale(0.97); }
+  .power-btn.reboot:active { border-color: var(--accent); color: var(--accent); }
+  .power-btn.shutdown:active { border-color: var(--red); color: var(--red); }
+
+  .power-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 40px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.ok   { border-color: var(--success); color: var(--success); }
+  #toast.err  { border-color: var(--red); color: var(--red); }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+    opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo" onclick="api('/api/home')" style="cursor:pointer;">
+    <div class="logo-dot"></div>
+    <span class="logo-text">Stream CBTV</span>
+  </div>
+  <span class="status-badge" id="status">ready</span>
+</header>
+
+<main>
+
+  <!-- URL Loader -->
+  <div class="url-section">
+    <span class="section-label">Load URL</span>
+    <div class="url-input-row">
+      <input
+        class="url-input"
+        id="urlInput"
+        type="url"
+        placeholder="paste a link..."
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+      >
+      <button class="go-btn" onclick="loadUrl()">GO</button>
+    </div>
+    <div class="quick-links">
+      <div class="quick-link" onclick="quickLoad('https://www.cineby.sc')">cineby</div>
+      <div class="quick-link" onclick="quickLoad('https://xprime.su')">xprime</div>
+      <div class="quick-link" onclick="quickLoad('https://rivestream.org')">rive</div>
+      <div class="quick-link" onclick="quickLoad('https://bitcine.net')">bitcine</div>
+    </div>
+  </div>
+
+  <!-- Playback Controls -->
+  <div class="controls-grid">
+    <button class="ctrl-btn" onclick="api('/api/back')">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      <span class="ctrl-label">Back</span>
+    </button>
+    <button class="ctrl-btn" onclick="api('/api/refresh')">
+      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      <span class="ctrl-label">Refresh</span>
+    </button>
+    <button class="ctrl-btn" onclick="api('/api/fullscreen')">
+      <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      <span class="ctrl-label">Fullscreen</span>
+    </button>
+    <button class="ctrl-btn" onclick="sendKey('space')">
+      <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      <span class="ctrl-label">Pause</span>
+    </button>
+    <button class="ctrl-btn" onclick="sendKey('Left')">
+      <svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+      <span class="ctrl-label">–10s</span>
+    </button>
+    <button class="ctrl-btn" onclick="sendKey('Right')">
+      <svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+      <span class="ctrl-label">+10s</span>
+    </button>
+  </div>
+
+
+  <!-- Keyboard Shortcuts -->
+  <div class="keys-grid">
+    <button class="key-btn" onclick="sendKey('f')">
+      <span class="key-chip">F</span>
+      <span class="key-desc">Player fullscreen</span>
+    </button>
+    <button class="key-btn" onclick="sendKey('m')">
+      <span class="key-chip">M</span>
+      <span class="key-desc">Mute player</span>
+    </button>
+    <button class="key-btn" onclick="sendKey('Escape')">
+      <span class="key-chip">ESC</span>
+      <span class="key-desc">Exit fullscreen</span>
+    </button>
+    <button class="key-btn" onclick="sendKey('k')">
+      <span class="key-chip">K</span>
+      <span class="key-desc">Play / pause</span>
+    </button>
+  </div>
+
+  <!-- Navigate -->
+  <div class="nav-grid">
+    <button class="nav-btn" onclick="sendKey('PageUp')">
+      <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+      <span class="ctrl-label">Scroll Up</span>
+    </button>
+    <button class="nav-btn" onclick="navTab(false)">
+      <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/><line x1="3" y1="12" x2="15" y2="12"/></svg>
+      <span class="ctrl-label">Tab</span>
+    </button>
+    <button class="nav-btn" onclick="navSelect()">
+      <svg viewBox="0 0 24 24"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+      <span class="ctrl-label">Select</span>
+    </button>
+    <button class="nav-btn" onclick="sendKey('PageDown')">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      <span class="ctrl-label">Scroll Down</span>
+    </button>
+    <button class="nav-btn" onclick="navTab(true)">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <span class="ctrl-label">Shift+Tab</span>
+    </button>
+    <button class="nav-btn reset-btn" onclick="navReset()">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      <span class="ctrl-label">Reset</span>
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Power -->
+  <div class="power-strip">
+    <button class="power-btn reboot" onclick="confirmAction('reboot')">
+      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Reboot
+    </button>
+    <button class="power-btn shutdown" onclick="confirmAction('shutdown')">
+      <svg viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+      Shutdown
+    </button>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  let toastTimer;
+
+  function toast(msg, type = 'ok') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ''; }, 2200);
+  }
+
+  function setStatus(s) {
+    document.getElementById('status').textContent = s;
+  }
+
+  async function api(endpoint, body = {}) {
+    try {
+      setStatus('...');
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      setStatus(data.ok ? 'ok' : 'err');
+      setTimeout(() => setStatus('ready'), 1500);
+      return data;
+    } catch (e) {
+      setStatus('err');
+      toast('connection error', 'err');
+      setTimeout(() => setStatus('ready'), 2000);
+    }
+  }
+
+  async function loadUrl() {
+    const input = document.getElementById('urlInput');
+    const url = input.value.trim();
+    if (!url) { toast('paste a URL first', 'err'); return; }
+    const res = await api('/api/load', { url });
+    if (res?.ok) {
+      toast('loading → ' + url.replace(/https?:\/\//, '').slice(0, 32));
+      input.value = '';
+    } else {
+      toast('failed to load', 'err');
+    }
+  }
+
+  function quickLoad(url) {
+    document.getElementById('urlInput').value = url;
+    loadUrl();
+  }
+
+  async function sendKey(key) {
+    const res = await api('/api/key', { key });
+    if (res?.ok) toast('key: ' + key);
+  }
+
+  async function navReset() {
+    const res = await api('/api/nav/reset');
+    if (res?.ok) toast('focus reset');
+  }
+
+  async function navTab(shift) {
+    await api('/api/nav/tab', { shift });
+    toast(shift ? '⇤ shift+tab' : 'tab →');
+  }
+
+  async function navSelect() {
+    const res = await api('/api/nav/select');
+    if (res?.ok) toast('select');
+  }
+
+
+  function confirmAction(action) {
+    const label = action === 'reboot' ? 'Reboot' : 'Shutdown';
+    if (confirm(`${label} the streambox?`)) {
+      api('/api/' + action);
+      toast(label.toLowerCase() + 'ing...', 'err');
+    }
+  }
+
+  // Submit URL on Enter key
+  document.getElementById('urlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadUrl();
+  });
+</script>
+
+</body>
+</html>
