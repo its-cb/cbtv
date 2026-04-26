@@ -59,16 +59,20 @@ def cdp_navigate(url):
         ws = websocket.create_connection(tab["webSocketDebuggerUrl"], timeout=5)
         ws.send(json.dumps({"id": 1, "method": "Page.navigate", "params": {"url": url}}))
         ws.recv()
-        # After page loads, try to click a Play button if present
-        time.sleep(4)
-        ws.send(json.dumps({
-            "id": 2,
-            "method": "Runtime.evaluate",
-            "params": {
-                "expression": "Array.from(document.querySelectorAll('button')).find(e => e.textContent.trim() === 'Play')?.click()"
-            }
-        }))
-        ws.recv()
+        # Poll for a Play button and click it as soon as it appears (up to 6s)
+        for attempt in range(12):
+            time.sleep(0.5)
+            ws.send(json.dumps({
+                "id": attempt + 2,
+                "method": "Runtime.evaluate",
+                "params": {
+                    "returnByValue": True,
+                    "expression": "(function(){ var b=Array.from(document.querySelectorAll('button')).find(e=>e.textContent.trim()==='Play'); if(b){b.click();return true;} return false; })()"
+                }
+            }))
+            result = json.loads(ws.recv())
+            if result.get("result", {}).get("result", {}).get("value") is True:
+                break
         ws.close()
         return True
     except Exception as e:
