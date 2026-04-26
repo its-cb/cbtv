@@ -2,9 +2,15 @@
 
 ## Quick Deploy (you know what you're doing)
 
+**First time on a new Mac — add the deploy alias:**
 ```bash
-# 1. Mac — deploy script handles everything
-bash "/Users/cbaldwin/Documents/Home/Stream CBTV/deploy.sh" <device-ip>
+echo 'alias deploycbtv="bash /Users/cbaldwin/Documents/Home/Stream\ CBTV/cbtv/deploy.sh"' >> ~/.zshrc && source ~/.zshrc
+```
+
+**Every deploy after that:**
+```bash
+# 1. Mac
+deploycbtv <device-ip>
 
 # 2. Device — as root (prompted by deploy script)
 su -
