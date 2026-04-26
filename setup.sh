@@ -50,10 +50,12 @@ apt-get install -y -qq \
     sudo
 
 # ── 2b. Blacklist SD card controller (causes log spam on some hardware)
-echo "blacklist sdhci" > /etc/modprobe.d/cbtv-blacklist.conf
-echo "blacklist sdhci_pci" >> /etc/modprobe.d/cbtv-blacklist.conf
-echo "blacklist sdhci_acpi" >> /etc/modprobe.d/cbtv-blacklist.conf
-update-initramfs -u -k all
+if [ ! -f /etc/modprobe.d/cbtv-blacklist.conf ]; then
+    echo "blacklist sdhci" > /etc/modprobe.d/cbtv-blacklist.conf
+    echo "blacklist sdhci_pci" >> /etc/modprobe.d/cbtv-blacklist.conf
+    echo "blacklist sdhci_acpi" >> /etc/modprobe.d/cbtv-blacklist.conf
+    update-initramfs -u -k all
+fi
 
 
 # ── 3. Create cbtv user ──────────────────────────────────────
