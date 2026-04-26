@@ -10,6 +10,7 @@ set -e
 CBTV_USER="cbtv"
 CBTV_DIR="/opt/cbtv"
 SERVICE_PORT="7777"
+NEEDS_REBOOT=false
 
 echo ""
 echo "╔══════════════════════════════════════╗"
@@ -55,6 +56,7 @@ if [ ! -f /etc/modprobe.d/cbtv-blacklist.conf ]; then
     echo "blacklist sdhci_pci" >> /etc/modprobe.d/cbtv-blacklist.conf
     echo "blacklist sdhci_acpi" >> /etc/modprobe.d/cbtv-blacklist.conf
     update-initramfs -u -k all
+    NEEDS_REBOOT=true
 fi
 
 
@@ -65,6 +67,7 @@ if ! id "$CBTV_USER" &>/dev/null; then
     usermod -aG video,audio,input "$CBTV_USER"
     printf '%s ALL=(ALL) NOPASSWD: /usr/sbin/reboot, /usr/sbin/shutdown\nDefaults:%s !requiretty\n' "$CBTV_USER" "$CBTV_USER" > /etc/sudoers.d/cbtv
     chmod 440 /etc/sudoers.d/cbtv
+    NEEDS_REBOOT=true
 fi
 
 # ── 4. Auto-login on tty1 ────────────────────────────────────
@@ -189,12 +192,16 @@ echo ""
 echo "╔══════════════════════════════════════╗"
 echo "║           SETUP COMPLETE ✓           ║"
 echo "╠══════════════════════════════════════╣"
-echo "║  Reboot to start Stream CBTV.        ║"
 echo "║  Control UI: http://<device-ip>:7777 ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
-read -p "Reboot now? [y/N] " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    reboot
+if [ "$NEEDS_REBOOT" = "true" ]; then
+    read -p "Reboot required. Reboot now? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        reboot
+    fi
+else
+    echo "No reboot needed — changes are live."
+    systemctl restart cbtv 2>/dev/null || true
 fi
