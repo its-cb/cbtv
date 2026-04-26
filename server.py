@@ -33,6 +33,18 @@ def get_local_ip():
         return "device-ip"
 
 
+def get_audio_device():
+    try:
+        result = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=3)
+        for line in result.stdout.splitlines():
+            if "hdmi" in line.lower() and "device" in line.lower():
+                name = line.split("[")[-1].rstrip("]").strip() if "[" in line else line.strip()
+                return name
+        return "no hdmi audio detected"
+    except Exception:
+        return "unknown"
+
+
 def cdp_tab():
     with urllib.request.urlopen(f"{CDP}/json", timeout=3) as r:
         tabs = json.loads(r.read())
@@ -47,6 +59,17 @@ def cdp_navigate(url):
         ws = websocket.create_connection(tab["webSocketDebuggerUrl"], timeout=5)
         ws.send(json.dumps({"id": 1, "method": "Page.navigate", "params": {"url": url}}))
         ws.recv()
+        # For cineby title pages, wait then click the play button
+        if "cineby" in url:
+            time.sleep(4)
+            ws.send(json.dumps({
+                "id": 2,
+                "method": "Runtime.evaluate",
+                "params": {
+                    "expression": "Array.from(document.querySelectorAll('button')).find(e => e.textContent.trim() === 'Play')?.click()"
+                }
+            }))
+            ws.recv()
         ws.close()
         return True
     except Exception as e:
@@ -142,7 +165,7 @@ def tv():
 
 @app.route("/api/ip")
 def get_ip():
-    return jsonify({"ip": get_local_ip()})
+    return jsonify({"ip": get_local_ip(), "audio": get_audio_device()})
 
 
 @app.route("/api/load", methods=["POST"])
