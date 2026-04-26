@@ -53,7 +53,7 @@ apt-get install -y -qq \
 echo "blacklist sdhci" > /etc/modprobe.d/cbtv-blacklist.conf
 echo "blacklist sdhci_pci" >> /etc/modprobe.d/cbtv-blacklist.conf
 echo "blacklist sdhci_acpi" >> /etc/modprobe.d/cbtv-blacklist.conf
-update-initramfs -u -k all -q
+update-initramfs -u -k all
 
 
 # ── 3. Create cbtv user ──────────────────────────────────────
