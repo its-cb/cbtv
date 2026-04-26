@@ -91,6 +91,7 @@ chown $CBTV_USER:$CBTV_USER /home/$CBTV_USER/.bash_profile
 
 # ── 6. Openbox autostart ─────────────────────────────────────
 echo "[6/9] Configuring Openbox..."
+rm -f /etc/asound.conf
 mkdir -p /home/$CBTV_USER/.config/openbox
 cat > /home/$CBTV_USER/.config/openbox/autostart << EOF
 # Auto-detect and set HDMI audio output on every boot
@@ -98,7 +99,7 @@ HDMI_LINE=\$(aplay -l 2>/dev/null | grep -i "hdmi" | grep "device" | head -1)
 HDMI_CARD=\$(echo "\$HDMI_LINE" | sed 's/card \([0-9]*\):.*/\1/')
 HDMI_DEV=\$(echo "\$HDMI_LINE" | sed 's/.*device \([0-9]*\):.*/\1/')
 if [ -n "\$HDMI_CARD" ] && [ -n "\$HDMI_DEV" ]; then
-  cat > /etc/asound.conf << ASOUNDEOF
+  cat > /home/$CBTV_USER/.asoundrc << ASOUNDEOF
 defaults.pcm.card \$HDMI_CARD
 defaults.pcm.device \$HDMI_DEV
 defaults.ctl.card \$HDMI_CARD
