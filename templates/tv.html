@@ -89,9 +89,35 @@
     letter-spacing: 0.04em;
     margin-top: 16px;
   }
+
+  /* ── Screensaver ── */
+  #screensaver {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 9999;
+    display: none;
+    pointer-events: none;
+  }
+
+  #screensaver.active { display: block; }
+
+  #ss-logo {
+    position: absolute;
+    font-family: 'Syne', sans-serif;
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #e8c547;
+    white-space: nowrap;
+    user-select: none;
+  }
 </style>
 </head>
 <body>
+
+<div id="screensaver"><div id="ss-logo">CBTV</div></div>
 
 <div class="dot"></div>
 <div class="logo">Stream CBTV</div>
@@ -119,6 +145,63 @@
       .catch(() => setTimeout(fetchIp, 2000));
   }
   fetchIp();
+
+  // ── Screensaver ──────────────────────────────────────────────
+  const SS_DELAY = 3 * 60 * 1000; // 3 minutes
+  const ss = document.getElementById('screensaver');
+  const ssLogo = document.getElementById('ss-logo');
+  let ssTimer, rafId;
+  let x, y, vx, vy;
+
+  function startBounce() {
+    const w = window.innerWidth  - ssLogo.offsetWidth;
+    const h = window.innerHeight - ssLogo.offsetHeight;
+    x = Math.random() * w;
+    y = Math.random() * h;
+    const speed = 0.8;
+    const angle = Math.random() * 2 * Math.PI;
+    vx = Math.cos(angle) * speed;
+    vy = Math.sin(angle) * speed;
+
+    let last = null;
+    function step(ts) {
+      if (!ss.classList.contains('active')) return;
+      const dt = last ? Math.min(ts - last, 50) : 16;
+      last = ts;
+      x += vx * dt;
+      y += vy * dt;
+      const maxX = window.innerWidth  - ssLogo.offsetWidth;
+      const maxY = window.innerHeight - ssLogo.offsetHeight;
+      if (x <= 0)    { x = 0;    vx = Math.abs(vx); }
+      if (x >= maxX) { x = maxX; vx = -Math.abs(vx); }
+      if (y <= 0)    { y = 0;    vy = Math.abs(vy); }
+      if (y >= maxY) { y = maxY; vy = -Math.abs(vy); }
+      ssLogo.style.transform = `translate(${x}px, ${y}px)`;
+      rafId = requestAnimationFrame(step);
+    }
+    rafId = requestAnimationFrame(step);
+  }
+
+  function activateSS() {
+    ss.classList.add('active');
+    startBounce();
+  }
+
+  function dismissSS() {
+    ss.classList.remove('active');
+    cancelAnimationFrame(rafId);
+    resetTimer();
+  }
+
+  function resetTimer() {
+    clearTimeout(ssTimer);
+    ssTimer = setTimeout(activateSS, SS_DELAY);
+  }
+
+  document.addEventListener('mousemove', dismissSS);
+  document.addEventListener('keydown',   dismissSS);
+  document.addEventListener('click',     dismissSS);
+  resetTimer();
 </script>
 </body>
 </html>
