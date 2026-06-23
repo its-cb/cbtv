@@ -383,6 +383,55 @@
     margin: 2px 0;
     opacity: 0.5;
   }
+
+  /* ── Pi-hole card ── */
+  .pihole-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .pihole-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .pihole-url {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pihole-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .pihole-btn:hover, .pihole-btn:active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 </style>
 </head>
 <body>
@@ -498,6 +547,15 @@
     </button>
   </div>
 
+  <!-- Pi-hole -->
+  <div class="pihole-card">
+    <div class="pihole-info">
+      <span class="section-label">Pi-hole</span>
+      <span class="pihole-url" id="piholeUrl"></span>
+    </div>
+    <a class="pihole-btn" id="piholeLink" target="_blank">Admin →</a>
+  </div>
+
   <div class="divider"></div>
 
   <!-- Power -->
@@ -602,6 +660,11 @@
   document.getElementById('urlInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadUrl();
   });
+
+  // Pi-hole link (dynamic — uses same host, port 8080)
+  const piholeUrl = `http://${window.location.hostname}:8080/admin`;
+  document.getElementById('piholeUrl').textContent = piholeUrl;
+  document.getElementById('piholeLink').href = piholeUrl;
 </script>
 
 </body>
