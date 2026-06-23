@@ -21,17 +21,23 @@ echo ""
 # ── 0. Fix clock before anything else ───────────────────────
 echo "[0/9] Syncing system clock..."
 hwclock --hctosys 2>/dev/null || true
-# Install chrony first (standalone, no signature dependency on time)
-apt-get -o Acquire::Check-Valid-Until=false update -qq
+# Install chrony first — bypass both valid-until AND valid-after signature checks
+# because the clock may be skewed in either direction on a fresh install
+APT_NOSIG="-o Acquire::Check-Valid-Until=false -o Acquire::Check-Valid-After=false"
+apt-get $APT_NOSIG update -qq
 apt-get install -y -qq chrony
 systemctl enable chrony
 systemctl start chrony
 chronyc makestep 2>/dev/null || true
-sleep 3
+# Wait until chrony confirms the clock is actually synced (up to 30s)
+for i in $(seq 1 30); do
+    chronyc tracking 2>/dev/null | grep -q "^Reference ID" && break
+    sleep 1
+done
 
 # ── 1. System update ─────────────────────────────────────────
 echo "[1/9] Updating system packages..."
-apt-get update -qq && apt-get upgrade -y -qq
+apt-get $APT_NOSIG update -qq && apt-get upgrade -y -qq
 
 # ── 2. Install dependencies ──────────────────────────────────
 echo "[2/9] Installing dependencies..."
@@ -48,9 +54,38 @@ apt-get install -y -qq \
     fonts-dejavu \
     curl \
     git \
-    sudo
+    sudo \
+    sqlite3 \
+    wpasupplicant
 
-# ── 2b. Blacklist SD card controller (causes log spam on some hardware)
+# ── 2b. WiFi profile (optional — bundled by deploy.sh if SSID was provided) ─
+if [ -f wifi.conf ]; then
+    # shellcheck source=/dev/null
+    source wifi.conf
+    rm -f wifi.conf
+    if [ -n "$WIFI_SSID" ] && [ -n "$WIFI_PASS" ]; then
+        WIFI_IFACE=$(ip link show | awk -F': ' '/^[0-9]+: w/{gsub(/@.*/,"",$2); print $2; exit}')
+        if [ -n "$WIFI_IFACE" ]; then
+            echo "  Configuring WiFi: $WIFI_SSID on $WIFI_IFACE"
+            wpa_passphrase "$WIFI_SSID" "$WIFI_PASS" > /etc/wpa_supplicant/wpa_supplicant-${WIFI_IFACE}.conf
+            chmod 600 /etc/wpa_supplicant/wpa_supplicant-${WIFI_IFACE}.conf
+            systemctl enable wpa_supplicant@${WIFI_IFACE}
+            if ! grep -q "$WIFI_IFACE" /etc/network/interfaces 2>/dev/null; then
+                cat >> /etc/network/interfaces << EOF
+
+allow-hotplug $WIFI_IFACE
+iface $WIFI_IFACE inet dhcp
+    wpa-conf /etc/wpa_supplicant/wpa_supplicant-${WIFI_IFACE}.conf
+EOF
+            fi
+            echo "  WiFi profile saved. Will connect automatically when in range."
+        else
+            echo "  No WiFi interface detected — skipping WiFi config."
+        fi
+    fi
+fi
+
+# ── 2d. Blacklist SD card controller (causes log spam on some hardware)
 if [ ! -f /etc/modprobe.d/cbtv-blacklist.conf ]; then
     echo "blacklist sdhci" > /etc/modprobe.d/cbtv-blacklist.conf
     echo "blacklist sdhci_pci" >> /etc/modprobe.d/cbtv-blacklist.conf
@@ -189,11 +224,85 @@ EOF
 
 chown -R $CBTV_USER:$CBTV_USER /home/$CBTV_USER/.config 2>/dev/null || true
 
+# ── 10. Pi-hole (local DNS filter / optional network-wide blocker) ─
+echo "[10/10] Installing Pi-hole..."
+
+# Detect primary network interface and its IP/CIDR
+PIHOLE_IFACE=$(ip route | awk '/default/ {print $5; exit}')
+PIHOLE_IPV4=$(ip -4 addr show "$PIHOLE_IFACE" | grep -oP '(?<=inet\s)\d+(\.\d+){3}/\d+' | head -1)
+
+# Write unattended install config
+mkdir -p /etc/pihole
+cat > /etc/pihole/setupVars.conf << EOF
+PIHOLE_INTERFACE=$PIHOLE_IFACE
+IPV4_ADDRESS=$PIHOLE_IPV4
+IPV6_ADDRESS=
+PIHOLE_DNS_1=8.8.8.8
+PIHOLE_DNS_2=8.8.4.4
+QUERY_LOGGING=true
+CACHE_SIZE=10000
+DNS_FQDN_REQUIRED=false
+DNS_BOGUS_PRIV=true
+DNSMASQ_LISTENING=local
+WEBPASSWORD=
+BLOCKING_ENABLED=true
+EOF
+
+# If systemd-resolved is running its stub listener it will clash with Pi-hole on port 53
+if systemctl is-active systemd-resolved &>/dev/null; then
+    mkdir -p /etc/systemd/resolved.conf.d
+    cat > /etc/systemd/resolved.conf.d/pihole.conf << 'EOF'
+[Resolve]
+DNS=127.0.0.1
+DNSStubListener=no
+EOF
+    systemctl restart systemd-resolved
+    ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+fi
+
+# Run Pi-hole unattended installer
+curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended
+
+# Set a readable random password (adjective-noun-number) so the web UI isn't read-only
+ADJS=(calm cool dark fast flat gold grey hard keen long mild neat rich slow soft warm wide)
+NOUNS=(bay cave crest dawn field frost gate hill lake mist peak pine reef ridge rock shore slope stone)
+PIHOLE_PASS="${ADJS[$((RANDOM % ${#ADJS[@]}))]}-${NOUNS[$((RANDOM % ${#NOUNS[@]}))]}-$((RANDOM % 900 + 100))"
+pihole setpassword "$PIHOLE_PASS" 2>/dev/null || pihole -a -p "$PIHOLE_PASS" 2>/dev/null || true
+
+# Add Hagezi adlists to gravity.db (Pi-hole installs sqlite3 as a dependency)
+# Do this before switching DNS so the gravity pull uses the existing working DNS
+sqlite3 /etc/pihole/gravity.db << 'SQLEOF'
+INSERT OR IGNORE INTO adlist (address, enabled, date_added, comment) VALUES
+    ('https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt',      1, strftime('%s','now'), 'Hagezi Multi'),
+    ('https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/popupads.txt',   1, strftime('%s','now'), 'Hagezi Popup Ads'),
+    ('https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.txt',        1, strftime('%s','now'), 'Hagezi Threat Intelligence Feeds'),
+    ('https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/fake.txt',       1, strftime('%s','now'), 'Hagezi Fake');
+SQLEOF
+pihole -g
+
+# Point this machine's DNS at its own Pi-hole.
+# dhcpcd overwrites /etc/resolv.conf on every connection, so configure it
+# to always use a static DNS instead of whatever the router advertises.
+if systemctl is-active systemd-resolved &>/dev/null; then
+    systemctl restart systemd-resolved
+elif command -v dhcpcd &>/dev/null; then
+    if ! grep -q 'static domain_name_servers=127.0.0.1' /etc/dhcpcd.conf 2>/dev/null; then
+        echo 'static domain_name_servers=127.0.0.1' >> /etc/dhcpcd.conf
+    fi
+    systemctl restart dhcpcd 2>/dev/null || true
+else
+    echo "nameserver 127.0.0.1" > /etc/resolv.conf
+fi
+
+echo "  Pi-hole admin: http://$(echo "$PIHOLE_IPV4" | cut -d/ -f1):8080/admin"
+echo "  Pi-hole password: $PIHOLE_PASS"
+
 echo ""
 echo "╔══════════════════════════════════════╗"
 echo "║           SETUP COMPLETE ✓           ║"
 echo "╠══════════════════════════════════════╣"
 echo "║  Control UI: http://<device-ip>:7777 ║"
+echo "║  Pi-hole:    http://<device-ip>:8080/admin ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 if [ "$NEEDS_REBOOT" = "true" ]; then
