@@ -281,14 +281,18 @@ SQLEOF
 pihole -g
 
 # Point this machine's DNS at its own Pi-hole.
-# dhcpcd overwrites /etc/resolv.conf on every connection, so configure it
-# to always use a static DNS instead of whatever the router advertises.
+# dhcpcd overwrites /etc/resolv.conf each time the network connects.
+# Fix: suppress the DHCP-provided DNS option and write our nameserver to
+# /etc/resolv.conf.head, which dhcpcd always prepends verbatim.
 if systemctl is-active systemd-resolved &>/dev/null; then
     systemctl restart systemd-resolved
 elif command -v dhcpcd &>/dev/null; then
-    if ! grep -q 'static domain_name_servers=127.0.0.1' /etc/dhcpcd.conf 2>/dev/null; then
-        echo 'static domain_name_servers=127.0.0.1' >> /etc/dhcpcd.conf
-    fi
+    grep -q 'nohook resolv.conf' /etc/dhcpcd.conf 2>/dev/null || \
+        echo 'nohook resolv.conf' >> /etc/dhcpcd.conf
+    rm -f /etc/resolv.conf.head
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    echo 'nameserver 127.0.0.1' > /etc/resolv.conf
+    chattr +i /etc/resolv.conf
     systemctl restart dhcpcd 2>/dev/null || true
 else
     echo "nameserver 127.0.0.1" > /etc/resolv.conf
