@@ -11,7 +11,7 @@ import json
 import time
 import urllib.request
 import websocket
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, make_response
 
 app = Flask(__name__)
 
@@ -157,14 +157,21 @@ KEY_MAP = {
 
 # ── Routes ────────────────────────────────────────────────���───
 
+def nocache(html):
+    r = make_response(html)
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    return r
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return nocache(render_template("index.html"))
 
 
 @app.route("/tv")
 def tv():
-    return render_template("tv.html")
+    return nocache(render_template("tv.html"))
 
 
 @app.route("/api/ip")
