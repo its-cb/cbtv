@@ -39,10 +39,11 @@ echo ""
 
 echo "→ Building archive..."
 cd "$PROJECT"
-COPYFILE_DISABLE=1 tar czf cbtv.tar.gz cbtv/ \
+COPYFILE_DISABLE=1 tar czf cbtv.tar.gz \
     --exclude "cbtv/deploy.sh" \
     --exclude "cbtv/.git" \
-    --exclude "cbtv/.gitignore"
+    --exclude "cbtv/.gitignore" \
+    cbtv/
 echo "  Done."
 
 echo "→ Transferring to $USER@$IP..."
