@@ -332,7 +332,7 @@ def update():
                 changed = True
         if not changed:
             return jsonify({"ok": True, "status": "up_to_date"})
-        subprocess.Popen(["bash", "-c", f"sleep 3 && kill -9 {os.getpid()}"])
+        subprocess.Popen(["sudo", "reboot"])
         return jsonify({"ok": True, "status": "updated"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
