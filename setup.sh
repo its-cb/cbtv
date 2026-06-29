@@ -51,6 +51,8 @@ apt-get install -y -qq \
     python3-websocket \
     xdotool \
     unclutter \
+    pulseaudio \
+    pulseaudio-utils \
     fonts-dejavu \
     curl \
     git \
@@ -139,6 +141,15 @@ defaults.pcm.card \$HDMI_CARD
 defaults.pcm.device \$HDMI_DEV
 defaults.ctl.card \$HDMI_CARD
 ASOUNDEOF
+fi
+
+# Start PulseAudio and route to HDMI (Chromium uses PulseAudio, not ALSA directly)
+pulseaudio --start 2>/dev/null || true
+sleep 1
+HDMI_SINK=\$(pactl list sinks short 2>/dev/null | grep -i hdmi | awk '{print \$2}' | head -1)
+if [ -n "\$HDMI_SINK" ]; then
+  pactl set-default-sink "\$HDMI_SINK" 2>/dev/null || true
+  pactl set-sink-volume @DEFAULT_SINK@ 100% 2>/dev/null || true
 fi
 
 # Hide cursor after 1s idle
