@@ -304,7 +304,7 @@ def audio_info():
 
 
 
-GITHUB_RAW = "https://raw.githubusercontent.com/its-cb/cbtv/main"
+GITHUB_API = "https://api.github.com/repos/its-cb/cbtv/contents"
 UPDATE_FILES = [
     ("server.py",            "/opt/cbtv/server.py"),
     ("templates/index.html", "/opt/cbtv/templates/index.html"),
@@ -316,7 +316,12 @@ def update():
     try:
         changed = False
         for rel, dest in UPDATE_FILES:
-            with urllib.request.urlopen(f"{GITHUB_RAW}/{rel}", timeout=15) as r:
+            req = urllib.request.Request(
+                f"{GITHUB_API}/{rel}",
+                headers={"Accept": "application/vnd.github.raw+json",
+                         "User-Agent": "stream-cbtv-updater"}
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
                 new = r.read()
             try:
                 old = open(dest, "rb").read()
