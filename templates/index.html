@@ -563,6 +563,12 @@
     </button>
   </div>
 
+  <!-- CEC -->
+  <button class="ctrl-btn" onclick="cecActive()" style="flex-direction:row; gap:10px; padding:16px 18px;">
+    <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+    <span class="ctrl-label" style="font-size:12px;">Switch TV Input Here</span>
+  </button>
+
   <!-- Pi-hole -->
   <div class="pihole-card">
     <div class="pihole-info">
@@ -680,6 +686,12 @@
     if (res?.ok) toast('select');
   }
 
+
+  async function cecActive() {
+    const res = await api('/api/cec/active');
+    if (res?.ok) toast('switched input');
+    else toast('CEC not available', 'err');
+  }
 
   async function checkUpdate() {
     toast('checking for updates...', 'ok');

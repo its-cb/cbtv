@@ -311,6 +311,18 @@ UPDATE_FILES = [
     ("templates/tv.html",    "/opt/cbtv/templates/tv.html"),
 ]
 
+@app.route("/api/cec/active", methods=["POST"])
+def cec_active():
+    try:
+        result = subprocess.run(
+            ["bash", "-c", "echo 'as' | cec-client -s -d 1"],
+            capture_output=True, text=True, timeout=10, env=env
+        )
+        return jsonify({"ok": result.returncode == 0})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @app.route("/api/update", methods=["POST"])
 def update():
     try:
