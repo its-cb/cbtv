@@ -275,6 +275,27 @@ def go_home():
 
 
 
+@app.route("/api/audio/info")
+def audio_info():
+    sinks = subprocess.run(
+        ["pactl", "list", "sinks", "short"],
+        capture_output=True, text=True, env=pulse_env
+    )
+    default = subprocess.run(
+        ["pactl", "get-default-sink"],
+        capture_output=True, text=True, env=pulse_env
+    )
+    alsa = subprocess.run(
+        ["aplay", "-l"], capture_output=True, text=True
+    )
+    return jsonify({
+        "default_sink": default.stdout.strip(),
+        "all_sinks": sinks.stdout.strip(),
+        "alsa_devices": alsa.stdout.strip(),
+        "pulse_error": sinks.stderr.strip()
+    })
+
+
 @app.route("/api/volume/up", methods=["POST"])
 def volume_up():
     subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%"],
