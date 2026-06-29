@@ -9,6 +9,7 @@ import subprocess
 import os
 import json
 import time
+import threading
 import urllib.request
 import websocket
 from flask import Flask, request, jsonify, render_template, make_response
@@ -19,6 +20,40 @@ DISPLAY = ":0"
 XAUTHORITY = "/home/cbtv/.Xauthority"
 env = {**os.environ, "DISPLAY": DISPLAY, "XAUTHORITY": XAUTHORITY}
 pulse_env = {**env, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"}
+
+
+def _audio_setup():
+    for _ in range(30):
+        time.sleep(2)
+        check = subprocess.run(["pactl", "list", "sinks", "short"],
+                               capture_output=True, text=True, env=pulse_env)
+        if check.returncode != 0:
+            continue
+        if "hdmi" not in check.stdout.lower():
+            aplay = subprocess.run(["aplay", "-l"], capture_output=True, text=True)
+            for line in aplay.stdout.splitlines():
+                if "hdmi" in line.lower() and "device" in line.lower():
+                    card = line.split("card ")[1].split(":")[0].strip()
+                    dev  = line.split("device ")[1].split(":")[0].strip()
+                    subprocess.run(["pactl", "load-module", "module-alsa-sink",
+                                    f"device=hw:{card},{dev}", "sink_name=hdmi_out"],
+                                   capture_output=True, env=pulse_env)
+                    subprocess.run(["pactl", "set-default-sink", "hdmi_out"],
+                                   capture_output=True, env=pulse_env)
+                    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
+                                   capture_output=True, env=pulse_env)
+                    return
+        else:
+            for line in check.stdout.splitlines():
+                if "hdmi" in line.lower():
+                    sink = line.split()[1]
+                    subprocess.run(["pactl", "set-default-sink", sink],
+                                   capture_output=True, env=pulse_env)
+                    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
+                                   capture_output=True, env=pulse_env)
+                    return
+
+threading.Thread(target=_audio_setup, daemon=True).start()
 CDP = "http://localhost:9222"
 
 

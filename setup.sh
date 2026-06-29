@@ -145,8 +145,16 @@ fi
 
 # Start PulseAudio and route to HDMI (Chromium uses PulseAudio, not ALSA directly)
 pulseaudio --start 2>/dev/null || true
-sleep 1
+sleep 2
 HDMI_SINK=\$(pactl list sinks short 2>/dev/null | grep -i hdmi | awk '{print \$2}' | head -1)
+if [ -z "\$HDMI_SINK" ]; then
+  HDMI_CARD=\$(echo "\$HDMI_LINE" | sed 's/card \([0-9]*\):.*/\1/')
+  HDMI_DEV=\$(echo "\$HDMI_LINE" | sed 's/.*device \([0-9]*\):.*/\1/')
+  if [ -n "\$HDMI_CARD" ] && [ -n "\$HDMI_DEV" ]; then
+    pactl load-module module-alsa-sink device=hw:\${HDMI_CARD},\${HDMI_DEV} sink_name=hdmi_out 2>/dev/null || true
+    HDMI_SINK="hdmi_out"
+  fi
+fi
 if [ -n "\$HDMI_SINK" ]; then
   pactl set-default-sink "\$HDMI_SINK" 2>/dev/null || true
   pactl set-sink-volume @DEFAULT_SINK@ 100% 2>/dev/null || true
