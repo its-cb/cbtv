@@ -296,19 +296,6 @@ def audio_info():
     })
 
 
-@app.route("/api/volume/up", methods=["POST"])
-def volume_up():
-    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%"],
-                   env=pulse_env, capture_output=True)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/volume/down", methods=["POST"])
-def volume_down():
-    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%"],
-                   env=pulse_env, capture_output=True)
-    return jsonify({"ok": True})
-
 
 GITHUB_RAW = "https://raw.githubusercontent.com/its-cb/cbtv/main"
 UPDATE_FILES = [
