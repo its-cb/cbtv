@@ -353,6 +353,22 @@
     flex-shrink: 0;
   }
 
+  /* ── Reboot banner ── */
+  .reboot-banner {
+    display: none;
+    background: var(--card);
+    border: 1.5px solid var(--red);
+    border-radius: var(--r);
+    padding: 14px 16px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .reboot-banner.show { display: flex; }
+  .reboot-banner-text { display: flex; flex-direction: column; gap: 4px; }
+  .reboot-banner-title { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--red); }
+  .reboot-banner-sub { font-size: 12px; color: var(--muted); }
+
   /* ── Toast ── */
   #toast {
     position: fixed;
@@ -556,6 +572,15 @@
     <a class="pihole-btn" id="piholeLink" target="_blank">Admin →</a>
   </div>
 
+  <!-- Reboot required banner -->
+  <div class="reboot-banner" id="reboot-banner">
+    <div class="reboot-banner-text">
+      <span class="reboot-banner-title">Reboot Required</span>
+      <span class="reboot-banner-sub">Update applied — tap to complete</span>
+    </div>
+    <button class="power-btn reboot" onclick="confirmAction('reboot')" style="padding:8px 14px; font-size:12px; flex-shrink:0;">Reboot</button>
+  </div>
+
   <!-- Update -->
   <button class="power-btn reboot" onclick="checkUpdate()" style="width:100%; justify-content:center; gap:12px;">
     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -663,11 +688,27 @@
     if (res.status === 'up_to_date') {
       toast('already up to date');
     } else if (res.status === 'updated') {
-      toast('update applied — reconnecting...', 'ok');
-      setTimeout(reconnectPoll, 4000);
+      toast('rebooting...', 'ok');
+      waitForOffline();
     } else {
       toast(res.error || 'update failed', 'err');
     }
+  }
+
+  function waitForOffline() {
+    let attempts = 0;
+    function check() {
+      if (attempts++ > 10) {
+        document.getElementById('reboot-banner').classList.add('show');
+        toast('reboot required — see banner', 'err');
+        return;
+      }
+      fetch('/').then(() => setTimeout(check, 1500)).catch(() => {
+        toast('reconnecting...', 'ok');
+        reconnectPoll();
+      });
+    }
+    setTimeout(check, 3000);
   }
 
   function reconnectPoll() {
