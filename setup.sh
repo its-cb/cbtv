@@ -53,7 +53,6 @@ apt-get install -y -qq \
     unclutter \
     pulseaudio \
     pulseaudio-utils \
-    cec-utils \
     fonts-dejavu \
     curl \
     git \
