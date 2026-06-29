@@ -289,6 +289,33 @@ def volume_down():
     return jsonify({"ok": True})
 
 
+@app.route("/api/update", methods=["POST"])
+def update():
+    try:
+        fetch = subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd="/opt/cbtv", capture_output=True, text=True, timeout=30
+        )
+        if fetch.returncode != 0:
+            return jsonify({"ok": False, "error": fetch.stderr.strip() or "fetch failed"})
+        behind = subprocess.run(
+            ["git", "rev-list", "HEAD..origin/main", "--count"],
+            cwd="/opt/cbtv", capture_output=True, text=True, timeout=5
+        )
+        if behind.stdout.strip() == "0":
+            return jsonify({"ok": True, "status": "up_to_date"})
+        subprocess.run(
+            ["git", "reset", "--hard", "origin/main"],
+            cwd="/opt/cbtv", capture_output=True, text=True, timeout=15
+        )
+        subprocess.Popen(["bash", "-c", "sleep 3 && sudo /usr/bin/systemctl restart cbtv"])
+        return jsonify({"ok": True, "status": "updated"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": "timed out"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @app.route("/api/reboot", methods=["POST"])
 def reboot():
     subprocess.Popen(["sudo", "reboot"])
