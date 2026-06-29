@@ -318,7 +318,8 @@ def cec_active():
             ["bash", "-c", "echo 'as' | cec-client -s -d 1"],
             capture_output=True, text=True, timeout=10, env=env
         )
-        return jsonify({"ok": result.returncode == 0})
+        ok = result.returncode == 0
+        return jsonify({"ok": ok, "out": result.stdout.strip(), "err": result.stderr.strip()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
