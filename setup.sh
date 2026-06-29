@@ -237,6 +237,10 @@ EOF
 chown -R $CBTV_USER:$CBTV_USER /home/$CBTV_USER/.config 2>/dev/null || true
 
 # ── 10. Pi-hole (local DNS filter / optional network-wide blocker) ─
+if command -v pihole &>/dev/null; then
+    echo "[10/10] Pi-hole already installed — checking for updates..."
+    pihole -up 2>/dev/null || true
+else
 echo "[10/10] Installing Pi-hole..."
 
 # Detect primary network interface and its IP/CIDR
@@ -312,6 +316,8 @@ fi
 
 echo "  Pi-hole admin: http://$(echo "$PIHOLE_IPV4" | cut -d/ -f1):8080/admin"
 echo "  Pi-hole password: $PIHOLE_PASS"
+
+fi # end Pi-hole install block
 
 echo ""
 echo "╔══════════════════════════════════════╗"
