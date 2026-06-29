@@ -320,7 +320,7 @@ def update():
                 changed = True
         if not changed:
             return jsonify({"ok": True, "status": "up_to_date"})
-        subprocess.Popen(["bash", "-c", "sleep 3 && sudo /usr/bin/systemctl restart cbtv"])
+        subprocess.Popen(["bash", "-c", f"sleep 3 && kill -9 {os.getpid()}"])
         return jsonify({"ok": True, "status": "updated"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
