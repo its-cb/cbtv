@@ -18,6 +18,7 @@ app = Flask(__name__)
 DISPLAY = ":0"
 XAUTHORITY = "/home/cbtv/.Xauthority"
 env = {**os.environ, "DISPLAY": DISPLAY, "XAUTHORITY": XAUTHORITY}
+pulse_env = {**env, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"}
 CDP = "http://localhost:9222"
 
 
@@ -272,6 +273,20 @@ def go_back():
 def go_home():
     return jsonify({"ok": cdp_navigate("http://localhost:7777/tv")})
 
+
+
+@app.route("/api/volume/up", methods=["POST"])
+def volume_up():
+    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%"],
+                   env=pulse_env, capture_output=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/volume/down", methods=["POST"])
+def volume_down():
+    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%"],
+                   env=pulse_env, capture_output=True)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/reboot", methods=["POST"])
