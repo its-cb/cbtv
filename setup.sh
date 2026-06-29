@@ -194,15 +194,6 @@ echo "[7/9] Installing Stream CBTV app..."
 mkdir -p $CBTV_DIR
 cp server.py $CBTV_DIR/
 cp -r templates $CBTV_DIR/
-# Initialize git for self-update
-git -C $CBTV_DIR init -b main 2>/dev/null || git -C $CBTV_DIR init
-git -C $CBTV_DIR config user.email "cbtv@streambox"
-git -C $CBTV_DIR config user.name "Stream CBTV"
-git -C $CBTV_DIR config pull.rebase false
-git -C $CBTV_DIR remote add origin https://github.com/its-cb/cbtv.git 2>/dev/null || \
-    git -C $CBTV_DIR remote set-url origin https://github.com/its-cb/cbtv.git
-git -C $CBTV_DIR add -A
-git -C $CBTV_DIR commit -m "deployed $(date -I)" 2>/dev/null || true
 chown -R $CBTV_USER:$CBTV_USER $CBTV_DIR
 
 # ── 8. Systemd service ───────────────────────────────────────
