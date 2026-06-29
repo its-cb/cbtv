@@ -50,7 +50,7 @@ scp "$PROJECT/cbtv.tar.gz" "$USER@$IP:/tmp/"
 echo "  Done."
 
 echo "→ Running setup on $IP..."
-SETUP_CMD="cd /tmp && tar --warning=no-unknown-keyword -xzf cbtv.tar.gz && cd cbtv && bash setup.sh"
+SETUP_CMD="cd /tmp && tar --warning=no-unknown-keyword -xzf cbtv.tar.gz && cd /tmp/cbtv && tr -d \"\\015\" < setup.sh > /tmp/setup_clean.sh && cd /tmp/cbtv && bash /tmp/setup_clean.sh"
 ssh -t "$USER@$IP" "sudo bash -c '$SETUP_CMD' || su - root -c '$SETUP_CMD'"
 
 # Clean up local archive and any wifi credentials
