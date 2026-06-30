@@ -23,35 +23,38 @@ pulse_env = {**env, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"}
 
 
 def _audio_setup():
-    for _ in range(30):
-        time.sleep(2)
-        check = subprocess.run(["pactl", "list", "sinks", "short"],
-                               capture_output=True, text=True, env=pulse_env)
-        if check.returncode != 0:
-            continue
-        if "hdmi" not in check.stdout.lower():
-            aplay = subprocess.run(["aplay", "-l"], capture_output=True, text=True)
-            for line in aplay.stdout.splitlines():
-                if "hdmi" in line.lower() and "device" in line.lower():
-                    card = line.split("card ")[1].split(":")[0].strip()
-                    dev  = line.split("device ")[1].split(":")[0].strip()
-                    subprocess.run(["pactl", "load-module", "module-alsa-sink",
-                                    f"device=hw:{card},{dev}", "sink_name=hdmi_out"],
-                                   capture_output=True, env=pulse_env)
-                    subprocess.run(["pactl", "set-default-sink", "hdmi_out"],
-                                   capture_output=True, env=pulse_env)
-                    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
-                                   capture_output=True, env=pulse_env)
-                    return
-        else:
-            for line in check.stdout.splitlines():
-                if "hdmi" in line.lower():
-                    sink = line.split()[1]
-                    subprocess.run(["pactl", "set-default-sink", sink],
-                                   capture_output=True, env=pulse_env)
-                    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
-                                   capture_output=True, env=pulse_env)
-                    return
+    try:
+        for _ in range(30):
+            time.sleep(2)
+            check = subprocess.run(["pactl", "list", "sinks", "short"],
+                                   capture_output=True, text=True, env=pulse_env)
+            if check.returncode != 0:
+                continue
+            if "hdmi" not in check.stdout.lower():
+                aplay = subprocess.run(["aplay", "-l"], capture_output=True, text=True)
+                for line in aplay.stdout.splitlines():
+                    if "hdmi" in line.lower() and "device" in line.lower():
+                        card = line.split("card ")[1].split(":")[0].strip()
+                        dev  = line.split("device ")[1].split(":")[0].strip()
+                        subprocess.run(["pactl", "load-module", "module-alsa-sink",
+                                        f"device=hw:{card},{dev}", "sink_name=hdmi_out"],
+                                       capture_output=True, env=pulse_env)
+                        subprocess.run(["pactl", "set-default-sink", "hdmi_out"],
+                                       capture_output=True, env=pulse_env)
+                        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
+                                       capture_output=True, env=pulse_env)
+                        return
+            else:
+                for line in check.stdout.splitlines():
+                    if "hdmi" in line.lower():
+                        sink = line.split()[1]
+                        subprocess.run(["pactl", "set-default-sink", sink],
+                                       capture_output=True, env=pulse_env)
+                        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
+                                       capture_output=True, env=pulse_env)
+                        return
+    except Exception as e:
+        print(f"audio setup failed: {e}")
 
 threading.Thread(target=_audio_setup, daemon=True).start()
 CDP = "http://localhost:9222"
@@ -319,23 +322,26 @@ def go_home():
 
 @app.route("/api/audio/info")
 def audio_info():
-    sinks = subprocess.run(
-        ["pactl", "list", "sinks", "short"],
-        capture_output=True, text=True, env=pulse_env
-    )
-    default = subprocess.run(
-        ["pactl", "get-default-sink"],
-        capture_output=True, text=True, env=pulse_env
-    )
-    alsa = subprocess.run(
-        ["aplay", "-l"], capture_output=True, text=True
-    )
-    return jsonify({
-        "default_sink": default.stdout.strip(),
-        "all_sinks": sinks.stdout.strip(),
-        "alsa_devices": alsa.stdout.strip(),
-        "pulse_error": sinks.stderr.strip()
-    })
+    try:
+        sinks = subprocess.run(
+            ["pactl", "list", "sinks", "short"],
+            capture_output=True, text=True, env=pulse_env
+        )
+        default = subprocess.run(
+            ["pactl", "get-default-sink"],
+            capture_output=True, text=True, env=pulse_env
+        )
+        alsa = subprocess.run(
+            ["aplay", "-l"], capture_output=True, text=True
+        )
+        return jsonify({
+            "default_sink": default.stdout.strip(),
+            "all_sinks": sinks.stdout.strip(),
+            "alsa_devices": alsa.stdout.strip(),
+            "pulse_error": sinks.stderr.strip()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 
 
