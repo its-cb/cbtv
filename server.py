@@ -22,6 +22,17 @@ env = {**os.environ, "DISPLAY": DISPLAY, "XAUTHORITY": XAUTHORITY}
 pulse_env = {**env, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"}
 
 
+def _move_streams_to_sink(sink_name):
+    """Move any active PulseAudio sink inputs (e.g. Chromium) to the given sink."""
+    inputs = subprocess.run(["pactl", "list", "sink-inputs", "short"],
+                            capture_output=True, text=True, env=pulse_env)
+    for line in inputs.stdout.splitlines():
+        parts = line.split()
+        if parts:
+            subprocess.run(["pactl", "move-sink-input", parts[0], sink_name],
+                           capture_output=True, env=pulse_env)
+
+
 def _audio_setup():
     try:
         for _ in range(30):
@@ -43,6 +54,7 @@ def _audio_setup():
                                        capture_output=True, env=pulse_env)
                         subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
                                        capture_output=True, env=pulse_env)
+                        _move_streams_to_sink("hdmi_out")
                         return
             else:
                 for line in check.stdout.splitlines():
@@ -52,6 +64,7 @@ def _audio_setup():
                                        capture_output=True, env=pulse_env)
                         subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
                                        capture_output=True, env=pulse_env)
+                        _move_streams_to_sink(sink)
                         return
     except Exception as e:
         print(f"audio setup failed: {e}")
@@ -334,9 +347,14 @@ def audio_info():
         alsa = subprocess.run(
             ["aplay", "-l"], capture_output=True, text=True
         )
+        inputs = subprocess.run(
+            ["pactl", "list", "sink-inputs", "short"],
+            capture_output=True, text=True, env=pulse_env
+        )
         return jsonify({
             "default_sink": default.stdout.strip(),
             "all_sinks": sinks.stdout.strip(),
+            "sink_inputs": inputs.stdout.strip(),
             "alsa_devices": alsa.stdout.strip(),
             "pulse_error": sinks.stderr.strip()
         })
