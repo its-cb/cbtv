@@ -48,7 +48,8 @@ def _audio_setup():
                         card = line.split("card ")[1].split(":")[0].strip()
                         dev  = line.split("device ")[1].split(":")[0].strip()
                         subprocess.run(["pactl", "load-module", "module-alsa-sink",
-                                        f"device=hw:{card},{dev}", "sink_name=hdmi_out"],
+                                        f"device=hw:{card},{dev}", "sink_name=hdmi_out",
+                                        "rate=48000", "format=s16le"],
                                        capture_output=True, env=pulse_env)
                         subprocess.run(["pactl", "set-default-sink", "hdmi_out"],
                                        capture_output=True, env=pulse_env)
