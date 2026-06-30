@@ -152,7 +152,7 @@ if [ -z "\$HDMI_SINK" ]; then
   HDMI_CARD=\$(echo "\$HDMI_LINE" | sed 's/card \([0-9]*\):.*/\1/')
   HDMI_DEV=\$(echo "\$HDMI_LINE" | sed 's/.*device \([0-9]*\):.*/\1/')
   if [ -n "\$HDMI_CARD" ] && [ -n "\$HDMI_DEV" ]; then
-    pactl load-module module-alsa-sink device=hw:\${HDMI_CARD},\${HDMI_DEV} sink_name=hdmi_out 2>/dev/null || true
+    pactl load-module module-alsa-sink device=hw:\${HDMI_CARD},\${HDMI_DEV} sink_name=hdmi_out rate=48000 format=s16le 2>/dev/null || true
     HDMI_SINK="hdmi_out"
   fi
 fi
