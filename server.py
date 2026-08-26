@@ -7,6 +7,7 @@ All Chromium control via Chrome DevTools Protocol (CDP).
 
 import subprocess
 import os
+import re
 import json
 import time
 import threading
@@ -22,53 +23,207 @@ env = {**os.environ, "DISPLAY": DISPLAY, "XAUTHORITY": XAUTHORITY}
 pulse_env = {**env, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"}
 
 
-def _move_streams_to_sink(sink_name):
-    """Move any active PulseAudio sink inputs (e.g. Chromium) to the given sink."""
-    inputs = subprocess.run(["pactl", "list", "sink-inputs", "short"],
-                            capture_output=True, text=True, env=pulse_env)
-    for line in inputs.stdout.splitlines():
-        parts = line.split()
-        if parts:
-            subprocess.run(["pactl", "move-sink-input", parts[0], sink_name],
-                           capture_output=True, env=pulse_env)
+# ── Audio ────────────────────────────────────────────────────
+# Three things can independently silence HDMI: the HDA codec's own mute
+# switches, the PulseAudio sink, and the stream on that sink. PulseAudio can
+# only see the last two, so a muted codec pin looks like a perfectly healthy
+# RUNNING sink with no sound coming out. Everything below fixes all three.
+
+GENERIC_HDMI = re.compile(r"^HDMI(\s*\d+)?$", re.I)
+
+# Playback controls worth unmuting, and the input-side ones to leave alone so
+# we never open a mic loopback onto the TV. "Front Mic" matches both lists on
+# purpose -- the exclusions win.
+MIXER_KEYWORDS = ("master", "pcm", "iec958", "hdmi", "digital",
+                  "speaker", "headphone", "front", "spdif", "s/pdif")
+MIXER_EXCLUDE = ("mic", "capture", "line", "aux", "beep", "loopback", "boost")
+
+
+def _sh(cmd, pulse=True, timeout=15):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                              env=pulse_env if pulse else env)
+    except Exception as e:
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+
+
+def _eld_monitors(card):
+    """Names of TVs the codec sees on this card, read from the ELD."""
+    names = []
+    try:
+        base = f"/proc/asound/card{card}"
+        for fn in sorted(os.listdir(base)):
+            if not fn.startswith("eld#"):
+                continue
+            txt = open(os.path.join(base, fn)).read()
+            if not re.search(r"monitor_present\s+1", txt):
+                continue
+            if not re.search(r"eld_valid\s+1", txt):
+                continue
+            m = re.search(r"monitor_name\s+(.+)", txt)
+            if m:
+                names.append(m.group(1).strip())
+    except Exception:
+        pass
+    return names
+
+
+def _hdmi_pcms():
+    """HDMI playback devices from `aplay -l`, most-likely-connected first.
+
+    A plugged-in TV writes its name into the ELD and ALSA uses that as the PCM
+    label -- `device 3: HDMI 0 [LG TV SSCR2]` has a TV on it, `device 7: HDMI 1
+    [HDMI 1]` is a bare pin. Picking on that keeps us off the dead ports
+    instead of just grabbing the first HDMI device we find.
+    """
+    pcms = []
+    eld_cache = {}
+    for line in _sh(["aplay", "-l"], pulse=False).stdout.splitlines():
+        m = re.match(r"card (\d+):.*?device (\d+): (.*?) \[(.*?)\]\s*$", line)
+        if not m:
+            continue
+        card, dev, pcm, label = int(m.group(1)), int(m.group(2)), m.group(3), m.group(4)
+        if "hdmi" not in pcm.lower() and "hdmi" not in label.lower():
+            continue
+        if card not in eld_cache:
+            eld_cache[card] = _eld_monitors(card)
+        monitors = eld_cache[card]
+        if monitors:
+            connected = any(label.strip().lower() == n.lower() for n in monitors)
+        else:
+            connected = not GENERIC_HDMI.match(label.strip())
+        pcms.append({"card": card, "device": dev, "label": label,
+                     "connected": connected})
+    pcms.sort(key=lambda p: (not p["connected"], p["device"]))
+    return pcms
+
+
+def _alsa_unmute(card):
+    """Unmute and max every playback control on the card.
+
+    Debian leaves the HDA IEC958/HDMI switches off on some boards, which is
+    invisible from PulseAudio's side -- this is the usual cause of video with
+    no audio.
+    """
+    touched = []
+    for line in _sh(["amixer", "-c", str(card), "scontrols"], pulse=False).stdout.splitlines():
+        m = re.search(r"'(.+?)',(\d+)", line)
+        if not m:
+            continue
+        name, idx = m.group(1), m.group(2)
+        low = name.lower()
+        if not any(k in low for k in MIXER_KEYWORDS) or any(k in low for k in MIXER_EXCLUDE):
+            continue
+        ctl = f"{name},{idx}"
+        # Separate calls: controls with no volume reject "100%", controls with
+        # no switch reject "unmute", and we want whichever one applies.
+        _sh(["amixer", "-c", str(card), "-q", "sset", ctl, "unmute"], pulse=False)
+        _sh(["amixer", "-c", str(card), "-q", "sset", ctl, "100%"], pulse=False)
+        touched.append(ctl)
+    return touched
+
+
+def _sink_index(name):
+    for line in _sh(["pactl", "list", "sinks", "short"]).stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[1] == name:
+            return parts[0]
+    return None
+
+
+def _ensure_sink(card, device):
+    """Return the name of a PulseAudio sink pointed at hw:card,device."""
+    want = f"hw:{card},{device}"
+
+    # An hdmi_out left over from a previous boot may be on the wrong pin.
+    for line in _sh(["pactl", "list", "modules", "short"]).stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 3 and parts[1] == "module-alsa-sink" and "sink_name=hdmi_out" in parts[2]:
+            if f"device={want}" in parts[2]:
+                return "hdmi_out"
+            _sh(["pactl", "unload-module", parts[0]])
+            break
+
+    # Prefer a natively detected HDMI sink where PulseAudio manages the card.
+    for line in _sh(["pactl", "list", "sinks", "short"]).stdout.splitlines():
+        parts = line.split("\t")
+        name = parts[1] if len(parts) >= 2 else ""
+        if name.startswith("alsa_output.") and "hdmi" in name.lower():
+            return name
+
+    _sh(["pactl", "load-module", "module-alsa-sink", f"device={want}",
+         "sink_name=hdmi_out", "rate=48000", "format=s16le", "channels=2"])
+    return "hdmi_out"
+
+
+def _apply_sink(sink):
+    """Make `sink` the destination and unmute it and everything playing on it.
+
+    Returns False if the sink has gone away, so the caller can re-route.
+    """
+    idx = _sink_index(sink)
+    if idx is None:
+        return False
+    _sh(["pactl", "set-default-sink", sink])
+    _sh(["pactl", "set-sink-mute", sink, "0"])
+    _sh(["pactl", "set-sink-volume", sink, "100%"])
+    for line in _sh(["pactl", "list", "sink-inputs", "short"]).stdout.splitlines():
+        parts = line.split("\t")
+        if not parts or not parts[0].strip():
+            continue
+        stream = parts[0].strip()
+        if len(parts) < 2 or parts[1].strip() != idx:
+            _sh(["pactl", "move-sink-input", stream, sink])
+        _sh(["pactl", "set-sink-input-mute", stream, "0"])
+        _sh(["pactl", "set-sink-input-volume", stream, "100%"])
+    return True
+
+
+def _audio_route():
+    """Full HDMI audio setup. Returns what it found and what it did."""
+    result = {"ok": False}
+    pcms = _hdmi_pcms()
+    result["candidates"] = pcms
+    if not pcms:
+        result["error"] = "no HDMI playback device found"
+        return result
+    pick = pcms[0]
+    result["device"] = f"hw:{pick['card']},{pick['device']}"
+    result["monitor"] = pick["label"]
+    result["connected"] = pick["connected"]
+    result["unmuted"] = _alsa_unmute(pick["card"])
+    sink = _ensure_sink(pick["card"], pick["device"])
+    result["sink"] = sink
+    result["ok"] = _apply_sink(sink)
+    if not result["ok"]:
+        result["error"] = f"sink {sink} did not come up"
+    return result
 
 
 def _audio_setup():
-    try:
-        for _ in range(30):
-            time.sleep(2)
-            check = subprocess.run(["pactl", "list", "sinks", "short"],
-                                   capture_output=True, text=True, env=pulse_env)
-            if check.returncode != 0:
-                continue
-            if "hdmi" not in check.stdout.lower():
-                aplay = subprocess.run(["aplay", "-l"], capture_output=True, text=True)
-                for line in aplay.stdout.splitlines():
-                    if "hdmi" in line.lower() and "device" in line.lower():
-                        card = line.split("card ")[1].split(":")[0].strip()
-                        dev  = line.split("device ")[1].split(":")[0].strip()
-                        subprocess.run(["pactl", "load-module", "module-alsa-sink",
-                                        f"device=hw:{card},{dev}", "sink_name=hdmi_out",
-                                        "rate=48000", "format=s16le"],
-                                       capture_output=True, env=pulse_env)
-                        subprocess.run(["pactl", "set-default-sink", "hdmi_out"],
-                                       capture_output=True, env=pulse_env)
-                        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
-                                       capture_output=True, env=pulse_env)
-                        _move_streams_to_sink("hdmi_out")
-                        return
-            else:
-                for line in check.stdout.splitlines():
-                    if "hdmi" in line.lower():
-                        sink = line.split()[1]
-                        subprocess.run(["pactl", "set-default-sink", sink],
-                                       capture_output=True, env=pulse_env)
-                        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "100%"],
-                                       capture_output=True, env=pulse_env)
-                        _move_streams_to_sink(sink)
-                        return
-    except Exception as e:
-        print(f"audio setup failed: {e}")
+    """Keep HDMI audio wired up for as long as we run.
+
+    PulseAudio, X and Chromium all come up on their own schedule and Chromium
+    opens a new stream every time a page starts playing, so this re-applies
+    instead of running once at boot and hoping.
+    """
+    sink = None
+    while True:
+        try:
+            if _sh(["pactl", "info"]).returncode != 0:
+                sink = None            # PulseAudio not up yet (or restarted)
+            elif sink is None:
+                res = _audio_route()
+                if res.get("ok"):
+                    sink = res["sink"]
+                    print(f"audio: {res['device']} [{res['monitor']}] -> {sink}, "
+                          f"unmuted {', '.join(res['unmuted']) or 'nothing'}", flush=True)
+            elif not _apply_sink(sink):
+                sink = None
+        except Exception as e:
+            print(f"audio setup failed: {e}", flush=True)
+        time.sleep(5 if sink is None else 30)
+
 
 threading.Thread(target=_audio_setup, daemon=True).start()
 CDP = "http://localhost:9222"
@@ -87,13 +242,13 @@ def get_local_ip():
 
 
 def get_audio_device():
+    """Name of the TV we are actually playing to, for the phone UI."""
     try:
-        result = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=3)
-        for line in result.stdout.splitlines():
-            if "hdmi" in line.lower() and "device" in line.lower():
-                name = line.split("[")[-1].rstrip("]").strip() if "[" in line else line.strip()
-                return name
-        return "no hdmi audio detected"
+        pcms = _hdmi_pcms()
+        if not pcms:
+            return "no hdmi audio detected"
+        pick = pcms[0]
+        return pick["label"] if pick["connected"] else f"{pick['label']} (no TV detected)"
     except Exception:
         return "unknown"
 
@@ -336,31 +491,92 @@ def go_home():
 
 @app.route("/api/audio/info")
 def audio_info():
+    """Everything needed to tell whether the TV, PulseAudio or the codec is
+    the one swallowing the audio."""
     try:
-        sinks = subprocess.run(
-            ["pactl", "list", "sinks", "short"],
-            capture_output=True, text=True, env=pulse_env
-        )
-        default = subprocess.run(
-            ["pactl", "get-default-sink"],
-            capture_output=True, text=True, env=pulse_env
-        )
-        alsa = subprocess.run(
-            ["aplay", "-l"], capture_output=True, text=True
-        )
-        inputs = subprocess.run(
-            ["pactl", "list", "sink-inputs", "short"],
-            capture_output=True, text=True, env=pulse_env
-        )
+        pcms = _hdmi_pcms()
+        cards = sorted({p["card"] for p in pcms})
+        mixer = {str(c): _sh(["amixer", "-c", str(c), "scontents"], pulse=False).stdout.strip()
+                 for c in cards}
+        eld = {str(c): _eld_monitors(c) for c in cards}
+        sinks = _sh(["pactl", "list", "sinks", "short"])
         return jsonify({
-            "default_sink": default.stdout.strip(),
+            "default_sink": _sh(["pactl", "get-default-sink"]).stdout.strip(),
             "all_sinks": sinks.stdout.strip(),
-            "sink_inputs": inputs.stdout.strip(),
-            "alsa_devices": alsa.stdout.strip(),
-            "pulse_error": sinks.stderr.strip()
+            "sink_inputs": _sh(["pactl", "list", "sink-inputs", "short"]).stdout.strip(),
+            "alsa_devices": _sh(["aplay", "-l"], pulse=False).stdout.strip(),
+            "hdmi_candidates": pcms,
+            "eld_monitors": eld,
+            "mixer": mixer,
+            "sinks_detail": _sh(["pactl", "list", "sinks"]).stdout.strip(),
+            "sink_inputs_detail": _sh(["pactl", "list", "sink-inputs"]).stdout.strip(),
+            "pulse_error": sinks.stderr.strip(),
         })
     except Exception as e:
         return jsonify({"error": str(e)})
+
+
+@app.route("/api/audio/fix", methods=["POST", "GET"])
+def audio_fix():
+    """Re-run HDMI detection, unmute the codec, and re-point every stream."""
+    try:
+        return jsonify(_audio_route())
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+TONE_WAV = "/tmp/cbtv-tone.wav"
+
+
+def _tone_file():
+    if not os.path.exists(TONE_WAV):
+        import wave, math, array
+        rate, secs, freq = 48000, 2, 440.0
+        mono = [int(11000 * math.sin(2 * math.pi * freq * i / rate))
+                for i in range(int(rate * secs))]
+        frames = array.array("h", [s for sample in mono for s in (sample, sample)])
+        with wave.open(TONE_WAV, "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(frames.tobytes())
+    return TONE_WAV
+
+
+@app.route("/api/audio/test", methods=["POST", "GET"])
+def audio_test():
+    """Play a 440 Hz tone so audio can be checked without loading a video.
+
+    ?direct=1 bypasses PulseAudio and writes straight to the HDMI device,
+    which separates "PulseAudio is misrouting" from "the codec or TV is mute".
+    """
+    try:
+        wav = _tone_file()
+        direct = request.args.get("direct") or (request.get_json(silent=True) or {}).get("direct")
+        if not direct:
+            r = _sh(["paplay", wav], timeout=20)
+            return jsonify({"ok": r.returncode == 0, "via": "pulseaudio",
+                            "sink": _sh(["pactl", "get-default-sink"]).stdout.strip(),
+                            "error": r.stderr.strip()})
+
+        pcms = _hdmi_pcms()
+        if not pcms:
+            return jsonify({"ok": False, "error": "no HDMI playback device found"})
+        pick = pcms[0]
+        dev = f"plughw:{pick['card']},{pick['device']}"
+        # PulseAudio holds the device open, so hand it over for the duration.
+        sink = _sh(["pactl", "get-default-sink"]).stdout.strip()
+        if sink:
+            _sh(["pactl", "suspend-sink", sink, "1"])
+        try:
+            r = _sh(["aplay", "-D", dev, wav], pulse=False, timeout=20)
+        finally:
+            if sink:
+                _sh(["pactl", "suspend-sink", sink, "0"])
+        return jsonify({"ok": r.returncode == 0, "via": dev,
+                        "monitor": pick["label"], "error": r.stderr.strip()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 
 

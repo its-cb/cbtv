@@ -4,7 +4,7 @@
 
 **First time on a new Mac — add the deploy alias:**
 ```bash
-echo 'alias deploycbtv="bash /path/to/Home/Stream\ CBTV/cbtv/deploy.sh"' >> ~/.zshrc && source ~/.zshrc
+echo 'alias deploycbtv="bash /path/to/VS\ Code/Stream\ CBTV/cbtv/deploy.sh"' >> ~/.zshrc && source ~/.zshrc
 ```
 
 **Every deploy after that:**
@@ -68,7 +68,7 @@ Set a DHCP reservation on your router for that MAC address so the IP never chang
 Run the deploy script from your Mac:
 
 ```bash
-bash "/path/to/Home/Stream CBTV/deploy.sh" <device-ip>
+bash "/path/to/VS Code/Stream CBTV/cbtv/deploy.sh" <device-ip>
 ```
 
 Then SSH in and run the commands it prints.
@@ -106,10 +106,31 @@ sudo systemctl restart cbtv
 ```
 
 **No audio:**
+
+Audio routing is handled by `server.py`, which on every boot picks the HDMI port
+that actually has a TV on it (via the ELD), unmutes the HDA codec's own
+`IEC958`/HDMI switches, and re-points every Chromium stream at that sink. All
+three of those can silence HDMI independently, and a muted codec switch is
+invisible to PulseAudio — the sink still reads `RUNNING` while the TV gets
+nothing. Check it from anywhere on the network:
+
 ```bash
-aplay -l    # find HDMI card/device numbers
+curl http://<device-ip>:7777/api/audio/test          # 440 Hz tone via PulseAudio
+curl http://<device-ip>:7777/api/audio/test?direct=1 # tone straight to the HDMI device
+curl -X POST http://<device-ip>:7777/api/audio/fix   # re-run detection + unmute
+curl http://<device-ip>:7777/api/audio/info          # sinks, streams, mixer, ELD
 ```
-Then update `/etc/asound.conf` with the correct card and device numbers and reboot.
+
+Read it like this:
+
+- **Both tones play, videos are silent** — Chromium's stream, not the audio path.
+  `/api/audio/fix` re-points it.
+- **`direct=1` plays, PulseAudio one doesn't** — wrong sink or a muted sink;
+  `/api/audio/fix`, then check `default_sink` in `/api/audio/info`.
+- **Neither plays** — codec mute or the TV. Check `mixer` in `/api/audio/info`
+  for anything still `[off]`, and `eld_monitors` for whether the codec sees the
+  TV at all. An empty `eld_monitors` means the TV isn't talking back over HDMI —
+  try the other HDMI port on the TV.
 
 **Disk getting full:**
 Add `--disk-cache-size=52428800` to the Chromium launch in:

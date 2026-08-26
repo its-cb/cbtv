@@ -129,37 +129,26 @@ chown $CBTV_USER:$CBTV_USER /home/$CBTV_USER/.bash_profile
 
 # ── 6. Openbox autostart ─────────────────────────────────────
 echo "[6/9] Configuring Openbox..."
+# Clear stale ALSA overrides from earlier deploys -- device selection now
+# lives in server.py, which picks the HDMI port that has a TV on it.
 rm -f /etc/asound.conf
+rm -f /home/$CBTV_USER/.asoundrc
 mkdir -p /home/$CBTV_USER/.config/openbox
 cat > /home/$CBTV_USER/.config/openbox/autostart << EOF
-# Auto-detect and set HDMI audio output on every boot
-HDMI_LINE=\$(aplay -l 2>/dev/null | grep -i "hdmi" | grep "device" | head -1)
-HDMI_CARD=\$(echo "\$HDMI_LINE" | sed 's/card \([0-9]*\):.*/\1/')
-HDMI_DEV=\$(echo "\$HDMI_LINE" | sed 's/.*device \([0-9]*\):.*/\1/')
-if [ -n "\$HDMI_CARD" ] && [ -n "\$HDMI_DEV" ]; then
-  cat > /home/$CBTV_USER/.asoundrc << ASOUNDEOF
-defaults.pcm.card \$HDMI_CARD
-defaults.pcm.device \$HDMI_DEV
-defaults.ctl.card \$HDMI_CARD
-ASOUNDEOF
-fi
-
-# Start PulseAudio and route to HDMI (Chromium uses PulseAudio, not ALSA directly)
+# Start PulseAudio -- Chromium plays through it, not through ALSA directly.
 pulseaudio --start 2>/dev/null || true
-sleep 2
-HDMI_SINK=\$(pactl list sinks short 2>/dev/null | grep -i hdmi | awk '{print \$2}' | head -1)
-if [ -z "\$HDMI_SINK" ]; then
-  HDMI_CARD=\$(echo "\$HDMI_LINE" | sed 's/card \([0-9]*\):.*/\1/')
-  HDMI_DEV=\$(echo "\$HDMI_LINE" | sed 's/.*device \([0-9]*\):.*/\1/')
-  if [ -n "\$HDMI_CARD" ] && [ -n "\$HDMI_DEV" ]; then
-    pactl load-module module-alsa-sink device=hw:\${HDMI_CARD},\${HDMI_DEV} sink_name=hdmi_out rate=48000 format=s16le 2>/dev/null || true
-    HDMI_SINK="hdmi_out"
-  fi
-fi
-if [ -n "\$HDMI_SINK" ]; then
-  pactl set-default-sink "\$HDMI_SINK" 2>/dev/null || true
-  pactl set-sink-volume @DEFAULT_SINK@ 100% 2>/dev/null || true
-fi
+
+# Unmute the HDA codec's own mute switches. Debian leaves IEC958/HDMI muted on
+# some boards, and PulseAudio cannot see those switches -- the sink still reads
+# RUNNING while the TV gets silence. server.py does this again (and picks the
+# HDMI port that actually has a TV on it), this is just so sound is up before
+# the control server is.
+for card in \$(aplay -l 2>/dev/null | sed -n 's/^card \([0-9]*\):.*/\1/p' | sort -u); do
+  amixer -c "\$card" scontrols 2>/dev/null | sed -n "s/.*'\(.*\)',\([0-9]*\).*/\1,\2/p" | grep -iE '^(master|pcm|iec958|hdmi|digital|speaker|headphone|front|spdif)' | grep -ivE 'mic|capture|line|aux|beep|loopback|boost' | while read -r ctl; do
+    amixer -c "\$card" -q sset "\$ctl" unmute 2>/dev/null || true
+    amixer -c "\$card" -q sset "\$ctl" 100% 2>/dev/null || true
+  done
+done
 
 # Hide cursor after 1s idle
 unclutter -idle 1 -root &
