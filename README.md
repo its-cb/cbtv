@@ -4,7 +4,7 @@
 
 **First time on a new Mac — add the deploy alias:**
 ```bash
-echo 'alias deploycbtv="bash /path/to/VS\ Code/Stream\ CBTV/cbtv/deploy.sh"' >> ~/.zshrc && source ~/.zshrc
+echo 'alias deploycbtv="bash /path/to/cbtv/deploy.sh"' >> ~/.zshrc && source ~/.zshrc
 ```
 
 **Every deploy after that:**
@@ -68,7 +68,7 @@ Set a DHCP reservation on your router for that MAC address so the IP never chang
 Run the deploy script from your Mac:
 
 ```bash
-bash "/path/to/VS Code/Stream CBTV/cbtv/deploy.sh" <device-ip>
+bash /path/to/cbtv/deploy.sh <device-ip>
 ```
 
 Then SSH in and run the commands it prints.
